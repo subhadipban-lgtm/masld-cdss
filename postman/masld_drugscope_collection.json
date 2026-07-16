@@ -1,0 +1,312 @@
+{
+  "info": {
+    "name": "MASLD DrugScope API",
+    "description": "API collection for MASLD DrugScope — GNN-Powered Therapeutic Hypothesis Engine. Upload RNA-seq data, check pipeline status, and retrieve drug ranking predictions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "job_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/health",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "health"]
+        },
+        "description": "Check service health and connectivity to Redis / PostgreSQL."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200', () => {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('Response has status field', () => {",
+              "  pm.expect(json).to.have.property('status');",
+              "  pm.expect(json.status).to.eql('healthy');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Upload FASTQ + Clinical Data",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "files",
+              "type": "file",
+              "src": "/path/to/sample.fastq",
+              "description": "RNA-seq FASTQ file (paired-end: upload both R1 and R2)"
+            },
+            {
+              "key": "patient_id",
+              "value": "PTN_0042",
+              "type": "text"
+            },
+            {
+              "key": "age",
+              "value": "54",
+              "type": "text"
+            },
+            {
+              "key": "sex",
+              "value": "M",
+              "type": "text"
+            },
+            {
+              "key": "bmi",
+              "value": "31.2",
+              "type": "text"
+            },
+            {
+              "key": "diabetes",
+              "value": "true",
+              "type": "text"
+            },
+            {
+              "key": "fibrosis_stage",
+              "value": "2",
+              "type": "text"
+            },
+            {
+              "key": "ast",
+              "value": "67",
+              "type": "text"
+            },
+            {
+              "key": "alt",
+              "value": "82",
+              "type": "text"
+            },
+            {
+              "key": "platelet_count",
+              "value": "198000",
+              "type": "text"
+            },
+            {
+              "key": "albumin",
+              "value": "3.8",
+              "type": "text"
+            },
+            {
+              "key": "bilirubin",
+              "value": "1.1",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/upload",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "upload"]
+        },
+        "description": "Upload RNA-seq FASTQ file(s) along with patient clinical parameters to start the analysis pipeline."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "console.log('Uploading FASTQ for patient PTN_0042...');"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200', () => {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('Response contains job_id', () => {",
+              "  pm.expect(json).to.have.property('job_id');",
+              "});",
+              "",
+              "pm.test('Response contains status', () => {",
+              "  pm.expect(json).to.have.property('status');",
+              "  pm.expect(['pending', 'queued']).to.include(json.status);",
+              "});",
+              "",
+              "// Auto-set job_id variable for subsequent requests",
+              "if (json.job_id) {",
+              "  pm.collectionVariables.set('job_id', json.job_id);",
+              "  console.log('Job ID set:', json.job_id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Job Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/status/{{job_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "status", "{{job_id}}"]
+        },
+        "description": "Check the processing status of a submitted analysis job. Use the `job_id` returned from the upload endpoint."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Warn if job_id is not set",
+              "const jobId = pm.collectionVariables.get('job_id');",
+              "if (!jobId) {",
+              "  console.warn('⚠️  No job_id set. Run the Upload request first.');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200', () => {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('Has valid job status', () => {",
+              "  const validStatuses = ['pending', 'running', 'completed', 'failed'];",
+              "  pm.expect(validStatuses).to.include(json.status);",
+              "});",
+              "",
+              "pm.test('Has progress field (0-1)', () => {",
+              "  pm.expect(json).to.have.property('progress');",
+              "  pm.expect(json.progress).to.be.at.least(0);",
+              "  pm.expect(json.progress).to.be.at.most(1);",
+              "});",
+              "",
+              "pm.test('Has steps_completed array', () => {",
+              "  pm.expect(json).to.have.property('steps_completed');",
+              "  pm.expect(json.steps_completed).to.be.an('array');",
+              "});",
+              "",
+              "// If completed, log it",
+              "if (json.status === 'completed') {",
+              "  console.log('✅ Pipeline completed!');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Job Results",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/results/{{job_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "results", "{{job_id}}"]
+        },
+        "description": "Retrieve the full prediction results for a completed job: drug rankings, stage hypothesis, ferroptosis enrichment, and GNN reasoning."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const jobId = pm.collectionVariables.get('job_id');",
+              "if (!jobId) {",
+              "  console.warn('⚠️  No job_id set. Run the Upload request first.');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200', () => {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "",
+              "pm.test('Has prediction object', () => {",
+              "  pm.expect(json).to.have.property('prediction');",
+              "});",
+              "",
+              "const pred = json.prediction;",
+              "",
+              "pm.test('Has drug rankings', () => {",
+              "  pm.expect(pred).to.have.property('drug_rankings');",
+              "  pm.expect(pred.drug_rankings).to.be.an('array');",
+              "  pm.expect(pred.drug_rankings.length).to.be.at.least(1);",
+              "});",
+              "",
+              "pm.test('Top drug has rank 1', () => {",
+              "  pm.expect(pred.drug_rankings[0].rank).to.eql(1);",
+              "});",
+              "",
+              "pm.test('Has stage hypothesis', () => {",
+              "  pm.expect(pred).to.have.property('stage_hypothesis');",
+              "  pm.expect(pred.stage_hypothesis).to.have.property('predicted_stage');",
+              "  pm.expect(pred.stage_hypothesis).to.have.property('confidence');",
+              "});",
+              "",
+              "pm.test('Stage probabilities sum to ~1.0', () => {",
+              "  const probs = pred.stage_hypothesis.stage_probabilities;",
+              "  const total = probs.reduce((sum, p) => sum + p.probability, 0);",
+              "  pm.expect(total).to.be.closeTo(1.0, 0.01);",
+              "});",
+              "",
+              "pm.test('Has GNN reasoning', () => {",
+              "  pm.expect(pred).to.have.property('gnn_reasoning');",
+              "  pm.expect(pred.gnn_reasoning.length).to.be.at.least(10);",
+              "});",
+              "",
+              "// Log the top 3 drugs for quick inspection",
+              "const top3 = pred.drug_rankings.slice(0, 3);",
+              "console.log('\\n🏆 Top 3 Drug Predictions:');",
+              "top3.forEach(d => {",
+              "  console.log(`  #${d.rank} ${d.drug} (${d.target}) — score: ${d.match_score}, confidence: ${d.confidence}`);",
+              "});",
+              "console.log(`\\n📈 Predicted Stage: ${pred.stage_hypothesis.predicted_stage} (${(pred.stage_hypothesis.confidence * 100).toFixed(1)}% confidence)`);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

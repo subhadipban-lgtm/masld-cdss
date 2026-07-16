@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+*.md
+.env
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+reference_data
+uploads
+logs
+*.db

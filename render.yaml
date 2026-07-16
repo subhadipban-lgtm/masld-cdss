@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: masld-drugscope
+    runtime: node
+    plan: free
+    buildCommand: bun install && bun run db:generate && bun run build
+    startCommand: bun run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: file:/data/custom.db
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

@@ -1,0 +1,86 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: masld_drugscope
+      POSTGRES_USER: masld
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-masld_dev_2024}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U masld"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://masld:${POSTGRES_PASSWORD:-masld_dev_2024}@postgres:5432/masld_drugscope
+      - REFERENCE_DATA_DIR=/app/reference_data
+      - LOG_LEVEL=INFO
+    volumes:
+      - upload_data:/app/uploads
+      - reference_data:/app/reference_data
+      - log_data:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://masld:${POSTGRES_PASSWORD:-masld_dev_2024}@postgres:5432/masld_drugscope
+      - REFERENCE_DATA_DIR=/app/reference_data
+      - LOG_LEVEL=INFO
+    volumes:
+      - upload_data:/app/uploads
+      - reference_data:/app/reference_data
+      - log_data:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://web:8000
+    depends_on:
+      - web
+
+volumes:
+  redis_data:
+  postgres_data:
+  upload_data:
+  reference_data:
+  log_data:
